@@ -1,0 +1,33 @@
+Actualizar c++
+
+https://github.com/theshoqanebi/cxxdroid-libraries-free
+
+Instalar Red Panda Dev-C++
+
+CMD or POWERSHELL:
+
+ winget install -e --id RoyQu.Red-C++
+ 
+ winget search allegro
+ 
+ winget install allegro5.allegro
+
+
+Pandaroyqh1979@gmail.com
+=================================
+
+Cxxdroid IDE:
+
+https://github.com/theshoqanebi/cxxdroid-libraries-free.git
+
+wget https://raw.githubusercontent.com/theshoqanebi/cxxdroid-libraries-free/main/allegro.sh -O - | sh
+
+wget https://raw.githubusercontent.com/theshoqanebi/cxxdroid-libraries-free/main/sfml.sh -O - | sh
+
+===============≠=========≠===≠=====
+
+CxStudio IDE:
+
+curl update && curl upgrade
+
+curl -LO
