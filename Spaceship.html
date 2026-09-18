@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Juego de Naves - Control Táctil</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b0b1e;
+            overflow: hidden;
+            font-family: sans-serif;
+            color: white;
+        }
+        #canvas {
+            display: block;
+            background: radial-gradient(circle, #1a1a3a 0%, #050510 100%);
+            margin: 0 auto;
+        }
+        /* Controles táctiles en pantalla */
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+            pointer-events: none;
+        }
+        .d-pad, .action-buttons {
+            display: grid;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        .d-pad {
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(2, 60px);
+        }
+        .btn {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            active-background: rgba(255, 255, 255, 0.5);
+        }
+        .btn:active {
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        #btn-shoot {
+            width: 75px;
+            height: 75px;
+            background-color: rgba(255, 50, 50, 0.4);
+            border-color: rgba(255, 50, 50, 0.6);
+            align-self: center;
+        }
+        #btn-shoot:active {
+            background-color: rgba(255, 50, 50, 0.7);
+        }
+        #score-board {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            font-size: 20px;
+            text-shadow: 2px 2px 4px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-board">Puntos: <span id="score">0</span></div>
+    <canvas id="canvas"></canvas>
+
+    <div id="controls">
+        <!-- Pad de movimiento izquierdo y derecho -->
+        <div class="d-pad">
+            <div id="btn-left" class="btn">◀</div>
+            <div id="btn-right" class="btn">▶</div>
+        </div>
+        <!-- Botón de disparo -->
+        <div class="action-buttons">
+            <div id="btn-shoot" class="btn">🔥</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const scoreElement = document.getElementById("score");
+
+        // Ajustar tamaño de pantalla de forma dinámica
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        let score = 0;
+        let keys = { left: false, right: false };
+
+        // --- ENTIDADES ---
+
+        // Jugador (Nave Verde)
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 150,
+            width: 50,
+            height: 40,
+            speed: 7,
+            color: "#00ffcc"
+        };
+
+        // Rival Automático (Nave Roja)
+        const enemy = {
+            x: canvas.width / 2 - 30,
+            y: 50,
+            width: 60,
+            height: 45,
+            speed: 4,
+            direction: 1, // 1 = Derecha, -1 = Izquierda
+            color: "#ff3333",
+            lastShot: 0,
+            shootInterval: 1000 // Dispara cada 1 segundo (1000ms)
+        };
+
+        let playerLasers = [];
+        let enemyLasers = [];
+
+        // --- CONTROLES TÁCTILES ---
+
+        const btnLeft = document.getElementById("btn-left");
+        const btnRight = document.getElementById("btn-right");
+        const btnShoot = document.getElementById("btn-shoot");
+
+        // Soporte para interacción táctil fluida (Multitouch)
+        function bindTouch(element, actionTrue, actionFalse) {
+            element.addEventListener("touchstart", (e) => { e.preventDefault(); actionTrue(); });
+            element.addEventListener("touchend", (e) => { e.preventDefault(); actionFalse(); });
+            // Soporte también para clics de mouse
+            element.addEventListener("mousedown", () => actionTrue());
+            element.addEventListener("mouseup", () => actionFalse());
+        }
+
+        bindTouch(btnLeft, () => keys.left = true, () => keys.left = false);
+        bindTouch(btnRight, () => keys.right = true, () => keys.right = false);
+        
+        bindTouch(btnShoot, () => {
+            // Disparar láser del jugador
+            playerLasers.push({
+                x: player.x + player.width / 2 - 3,
+                y: player.y,
+                width: 6,
+                height: 15,
+                speed: 10
+            });
+        }, () => {});
+
+        // --- LÓGICA DEL JUEGO ---
+
+        function update() {
+            // Movimiento del jugador
+            if (keys.left && player.x > 0) {
+                player.x -= player.speed;
+            }
+            if (keys.right && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            }
+
+            // Movimiento automático del rival (Rebota en los bordes)
+            enemy.x += enemy.speed * enemy.direction;
+            if (enemy.x <= 0 || enemy.x >= canvas.width - enemy.width) {
+                enemy.direction *= -1;
+            }
+
+            // Disparo automático del rival
+            let currentTime = Date.now();
+            if (currentTime - enemy.lastShot > enemy.shootInterval) {
+                enemyLasers.push({
+                    x: enemy.x + enemy.width / 2 - 3,
+                    y: enemy.y + enemy.height,
+                    width: 6,
+                    height: 15,
+                    speed: 6
+                });
+                enemy.lastShot = currentTime;
+            }
+
+            // Actualizar láseres del jugador
+            for (let i = playerLasers.length - 1; i >= 0; i--) {
+                let l = playerLasers[i];
+                l.y -= l.speed;
+                
+                // Colisión láser jugador -> Rival
+                if (l.x < enemy.x + enemy.width &&
+                    l.x + l.width > enemy.x &&
+                    l.y < enemy.y + enemy.height &&
+                    l.y + l.height > enemy.y) {
+                    
+                    score += 10;
+                    scoreElement.innerText = score;
+                    playerLasers.splice(i, 1);
+                    // Efecto visual rápido al impactar al enemigo
+                    enemy.color = "#ffffff";
+                    setTimeout(() => enemy.color = "#ff3333", 100);
+                    continue;
+                }
+
+                if (l.y < 0) playerLasers.splice(i, 1);
+            }
+
+            // Actualizar láseres del rival
+            for (let i = enemyLasers.length - 1; i >= 0; i--) {
+                let l = enemyLasers[i];
+                l.y += l.speed;
+
+                // Colisión láser rival -> Jugador
+                if (l.x < player.x + player.width &&
+                    l.x + l.width > player.x &&
+                    l.y < player.y + player.height &&
+                    l.y + l.height > player.y) {
+                    
+                    score = Math.max(0, score - 5); // Penalización
+                    scoreElement.innerText = score;
+                    enemyLasers.splice(i, 1);
+                    player.color = "#ffffff";
+                    setTimeout(() => player.color = "#00ffcc", 100);
+                    continue;
+                }
+
+                if (l.y > canvas.height) enemyLasers.splice(i, 1);
+            }
+        }
+
+        // --- RENDERIZADO (DIBUJO) ---
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dibujar Jugador (Estilo Nave Espacial geométrica)
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width / 2, player.y);
+            ctx.lineTo(player.x, player.y + player.height);
+            ctx.lineTo(player.x + player.width, player.y + player.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Dibujar Rival
+            ctx.fillStyle = enemy.color;
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width, enemy.y);
+            ctx.lineTo(enemy.x + enemy.width / 2, enemy.y + enemy.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Dibujar láseres del jugador
+            ctx.fillStyle = "#00ffff";
+            playerLasers.forEach(l => {
+                ctx.fillRect(l.x, l.y, l.width, l.height);
+            });
+
+            // Dibujar láseres del rival
+            ctx.fillStyle = "#ff5555";
+            enemyLasers.forEach(l => {
+                ctx.fillRect(l.x, l.y, l.width, l.height);
+            });
+        }
+
+        // Bucle principal del juego
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
